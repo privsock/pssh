@@ -15,7 +15,7 @@ import (
 var RootCmd = &cobra.Command{
 	Use:     "pssh",
 	Version: "0.1.1",
-	Short:   "pssh is an ssh wrapper integrating with CyberArk platform",
+	Short:   "pssh is an ssh connection client for the CyberArk platform",
 	Run:     rootCmdEntrypoint,
 	Args:    cobra.ExactArgs(1),
 }
