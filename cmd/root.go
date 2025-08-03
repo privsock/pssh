@@ -9,13 +9,12 @@ import (
 	"os"
 	"path"
 	"pssh/cmd/config"
-	"pssh/cmd/version"
 	"pssh/utils"
 )
 
 var RootCmd = &cobra.Command{
 	Use:     "pssh",
-	Version: "0.1.0",
+	Version: "0.1.1",
 	Short:   "pssh is an ssh wrapper integrating with CyberArk platform",
 	Run:     rootCmdEntrypoint,
 	Args:    cobra.ExactArgs(1),
@@ -25,10 +24,10 @@ var RootCmd = &cobra.Command{
 func init() {
 	cobra.OnInitialize(loadConfig)
 	RootCmd.Flags().String("profile-name", profiles.DefaultProfileName(), "Profile name to load")
+	RootCmd.Flags().String("network", "", "Profile name to load")
 	RootCmd.Flags().Bool("no-shared-secrets", false, "Do not share secrets between different authenticators with the same username")
 	RootCmd.Flags().Bool("force", false, "Whether to force login even though token has not expired yet")
 	RootCmd.Flags().Bool("refresh-auth", false, "If a cache exists, will also try to refresh it")
-	RootCmd.AddCommand(version.VersionCmd)
 	RootCmd.AddCommand(config.ConfigCmd)
 }
 

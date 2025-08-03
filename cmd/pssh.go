@@ -190,16 +190,21 @@ func (pssh *PSSH) ConnectWithSSH(cmd *cobra.Command, execArgs []string, keyPath 
 	if err != nil {
 		return err
 	}
-	host := fmt.Sprintf("%s.ssh.cyberark.cloud", subdomain)
-
 	if len(execArgs) == 0 {
 		return errors.New("missing [user@]hostname")
 	}
 	content := execArgs[0]
+	host := fmt.Sprintf("%s.ssh.cyberark.cloud", subdomain)
+
+	network, err := cmd.Flags().GetString("network")
+	if err != nil {
+		return errors.New("missing network")
+	}
+	network = fmt.Sprintf("#%s", network)
 
 	// ZSP: <username>@<login_suffix>#<subdomain>@<target>[:target_port]#<NetworkName>@<SSH gateway> <inline_commands>
 	// VTL: <username>@<login_suffix>#<subdomain>@<target_user>#account_domain@<target>[:target_port]#<NetworkName>@<SSH gateway> <inline_commands>
-	connString := fmt.Sprintf("%s#%s@%s@%s", username, subdomain, content, host)
+	connString := fmt.Sprintf("%s#%s@%s%s@%s", username, subdomain, content, network, host)
 	cmdArgs = append(cmdArgs, connString)
 
 	// Prepare command
