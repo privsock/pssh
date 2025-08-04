@@ -12,7 +12,7 @@ import (
 
 var RootCmd = &cobra.Command{
 	Use:     "pssh user@address",
-	Version: "0.1.2",
+	Version: "0.1.3",
 	Short:   "pssh is an ssh connection client for the CyberArk platform",
 	Run:     rootCmdEntrypoint,
 	Args:    cobra.ExactArgs(1),
@@ -32,6 +32,7 @@ func init() {
 	arkActions := []actions.ArkAction{
 		actions.NewArkProfilesAction(profilesLoader),
 		actions.NewArkConfigureAction(profilesLoader),
+		actions.NewArkCacheAction(),
 	}
 
 	for _, action := range arkActions {
@@ -48,14 +49,21 @@ func rootCmdEntrypoint(cmd *cobra.Command, execArgs []string) {
 	pssh := PSSH{
 		profile: utils.GetProfile(profileName),
 		logger:  common.GetLogger("PSSH", common.Unknown),
+		cmd:     cmd,
+		args:    execArgs,
 	}
 
-	err := pssh.Authenticate(cmd)
+	authenticated, err := pssh.Authenticate()
 	if err != nil {
+
 		return
 	}
-	sshKeyPath := pssh.GenerateSSHToken(cmd)
-	err = pssh.ConnectWithSSH(cmd, execArgs, sshKeyPath)
+	if !authenticated {
+		return
+	}
+
+	sshKeyPath := pssh.GenerateSSHToken()
+	err = pssh.ConnectWithSIA(sshKeyPath)
 	if err != nil {
 		args.PrintFailure("Failed to connect")
 		return

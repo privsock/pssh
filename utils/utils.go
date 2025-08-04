@@ -74,6 +74,18 @@ func GetSubdomain(profile *models.ArkProfile) (string, error) {
 
 	return subdomain, nil
 }
+func GetUsername(profile *models.ArkProfile) (string, error) {
+	var username string
+	for _, authProfile := range profile.AuthProfiles {
+		username = authProfile.Username
+		break
+	}
+	if username == "" {
+		args.PrintFailure("No username found")
+		return "", errors.New("missing username")
+	}
+	return username, nil
+}
 
 func ParseTokenDateString(dateStr string) (string, error) {
 	layout := time.RFC3339Nano
