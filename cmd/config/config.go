@@ -12,8 +12,8 @@ import (
 )
 
 var ConfigCmd = &cobra.Command{
-	Use:   "config",
-	Short: "Edit config",
+	Use:   "edit",
+	Short: "Edit pssh config",
 	Long:  `Edit pssh configuration`,
 	Run: func(cmd *cobra.Command, args []string) {
 		ConfigureString("ark_profile", "Enter Ark profile name", "", false)

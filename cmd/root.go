@@ -1,15 +1,17 @@
 package cmd
 
 import (
+	"github.com/Kalybus/ark-sdk-golang/pkg/actions"
 	"github.com/Kalybus/ark-sdk-golang/pkg/common"
 	"github.com/Kalybus/ark-sdk-golang/pkg/common/args"
+	"github.com/Kalybus/ark-sdk-golang/pkg/profiles"
 	"github.com/spf13/cobra"
 	"pssh/cmd/config"
 	"pssh/utils"
 )
 
 var RootCmd = &cobra.Command{
-	Use:     "pssh",
+	Use:     "pssh user@address",
 	Version: "0.1.2",
 	Short:   "pssh is an ssh connection client for the CyberArk platform",
 	Run:     rootCmdEntrypoint,
@@ -25,6 +27,16 @@ func init() {
 	RootCmd.Flags().Bool("force", false, "Whether to force login even though token has not expired yet")
 	RootCmd.Flags().Bool("refresh-auth", false, "If a cache exists, will also try to refresh it")
 	RootCmd.AddCommand(config.ConfigCmd)
+
+	profilesLoader := profiles.DefaultProfilesLoader()
+	arkActions := []actions.ArkAction{
+		actions.NewArkProfilesAction(profilesLoader),
+		actions.NewArkConfigureAction(profilesLoader),
+	}
+
+	for _, action := range arkActions {
+		action.DefineAction(RootCmd)
+	}
 }
 
 // rootCmdEntrypoint Authenticate and performs SSH connection
