@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/viper"
 	"os"
 	"os/exec"
+	"pssh/cmd/config"
 	"pssh/utils"
 	"slices"
 )
@@ -63,15 +64,18 @@ func (pssh *PSSH) Authenticate(cmd *cobra.Command) error {
 		}
 		if common.IsInteractive() && slices.Contains(authmodels.ArkAuthMethodsRequireCredentials, authProfile.AuthMethod) {
 			var err error
-			authProfile.Username, err = args.GetArg(
-				cmd,
-				fmt.Sprintf("%s-username", authenticatorName),
-				fmt.Sprintf("%s Username", authenticator.AuthenticatorHumanReadableName()),
-				userName,
-				false,
-				true,
-				false,
-			)
+			authProfile.Username = config.GetString("login_username")
+			if authProfile.Username == "" {
+				authProfile.Username, err = args.GetArg(
+					cmd,
+					fmt.Sprintf("%s-username", authenticatorName),
+					fmt.Sprintf("%s Username", authenticator.AuthenticatorHumanReadableName()),
+					userName,
+					false,
+					true,
+					false,
+				)
+			}
 			if slices.Contains(authmodels.ArkAuthMethodSharableCredentials, authProfile.AuthMethod) &&
 				len(sharedSecretsMap[authProfile.AuthMethod]) > 0 && !viper.GetBool("no-shared-secrets") {
 				for _, s := range sharedSecretsMap[authProfile.AuthMethod] {
@@ -200,7 +204,12 @@ func (pssh *PSSH) ConnectWithSSH(cmd *cobra.Command, execArgs []string, keyPath 
 	if err != nil {
 		return errors.New("missing network")
 	}
-	network = fmt.Sprintf("#%s", network)
+	if network == "" {
+		network = config.GetString("sia_network")
+	}
+	if network != "" {
+		network = fmt.Sprintf("#%s", network)
+	}
 
 	// ZSP: <username>@<login_suffix>#<subdomain>@<target>[:target_port]#<NetworkName>@<SSH gateway> <inline_commands>
 	// VTL: <username>@<login_suffix>#<subdomain>@<target_user>#account_domain@<target>[:target_port]#<NetworkName>@<SSH gateway> <inline_commands>
