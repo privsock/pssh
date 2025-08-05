@@ -134,7 +134,13 @@ func (pssh *PSSH) DisplayAuthenticatedProfiles(tokensMap map[string]*authmodels.
 			args.PrintFailure("Failed to parse date")
 			continue
 		}
-		args.PrintSuccess(fmt.Sprintf("\nAuthenticated as %s until %s", tokenMap["username"], parsedTime))
+		args.PrintSuccess(fmt.Sprintf("Authenticated as %s until %s", tokenMap["username"], parsedTime))
+		// Fix a glitch when the user types Enter, the "Mobile authentication waiting for input..." appears again
+		// The glitch is caused by the Ask.Password{} in the polling goroutine, waiting for a user input
+		_, err = os.Stdin.Write([]byte("\n"))
+		if err != nil {
+			return
+		}
 	}
 }
 
@@ -148,7 +154,6 @@ func (pssh *PSSH) Authenticate() (bool, error) {
 	sharedSecretsMap := make(map[authmodels.ArkAuthMethod][][2]string)
 
 	defer pssh.DisplayAuthenticatedProfiles(tokensMap)
-
 	force, _ := pssh.cmd.Flags().GetBool("force")
 	refreshAuth, _ := pssh.cmd.Flags().GetBool("refresh-auth")
 	for authenticatorName, authProfile := range pssh.profile.AuthProfiles {
