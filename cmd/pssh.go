@@ -14,11 +14,14 @@ import (
 	"github.com/Kalybus/ark-sdk-golang/pkg/services/sia/sso"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/term"
 	"os"
 	"os/exec"
 	"pssh/cmd/config"
 	"pssh/utils"
 	"slices"
+	"strings"
 )
 
 type PSSH struct {
@@ -238,17 +241,135 @@ func (pssh *PSSH) ConnectWithSIA(keyPath string) error {
 	// VTL: <username>@<login_suffix>#<subdomain>@<target_user>#account_domain@<target>[:target_port]#<NetworkName>@<SSH gateway> <inline_commands>
 	connString := fmt.Sprintf("%s#%s@%s%s@%s", username, subdomain, content, network, host)
 	cmdArgs = append(cmdArgs, connString)
+	client := SSHNativeConnection{}
+	client.Connect(cmdArgs)
+	return nil
+}
 
-	// Prepare command
+type SSHClient interface {
+	Connect(cmdArgs string) bool
+}
+
+type SSHNativeConnection struct {
+	SSHClient
+}
+
+// Connect Connects using the system ssh client
+func (client *SSHNativeConnection) Connect(cmdArgs []string) bool {
 	sshCmd := exec.Command("ssh", cmdArgs...)
 	sshCmd.Stdout = os.Stdout
 	sshCmd.Stderr = os.Stderr
 	sshCmd.Stdin = os.Stdin
 
 	// SSH connection
-	err = sshCmd.Run()
+	err := sshCmd.Run()
 	if err != nil {
-		return err
+		args.PrintFailure(fmt.Sprintf("client error: %s", err.Error()))
+		return false
 	}
-	return nil
+	return true
+}
+
+type SSHGolangConnection struct {
+	SSHClient
+}
+
+// Connect Connects using the golang ssh client (WIP)
+func (client *SSHGolangConnection) Connect(cmdArgs []string) bool {
+	key, err := os.ReadFile(cmdArgs[1])
+	if err != nil {
+		fmt.Printf("unable to read private key: %w\n", err)
+		return false
+	}
+
+	signer, err := ssh.ParsePrivateKey(key)
+	if err != nil {
+		fmt.Printf("unable to parse private key: %w\n", err)
+		return false
+	}
+
+	username, host, err := splitSSHConnectionString(cmdArgs[len(cmdArgs)-1])
+	if err != nil {
+		return false
+	}
+
+	sshClientConfig := &ssh.ClientConfig{
+		User: username,
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(signer),
+		},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // for simplicity; not safe for production
+	}
+
+	address := fmt.Sprintf("%s:%s", host, "22")
+
+	sshClient, err := ssh.Dial("tcp", address, sshClientConfig)
+	if err != nil {
+		fmt.Printf("failed to dial: %w", err)
+		return false
+	}
+	defer sshClient.Close()
+
+	session, err := sshClient.NewSession()
+	if err != nil {
+		fmt.Printf("failed to create session: %w", err)
+		return false
+	}
+	defer session.Close()
+
+	// Set up terminal modes
+	fd := int(os.Stdin.Fd())
+	oldState, err := term.MakeRaw(fd)
+	if err != nil {
+		fmt.Printf("failed to set raw terminal mode: %w", err)
+		return false
+	}
+	defer term.Restore(fd, oldState)
+
+	width, height, err := term.GetSize(fd)
+	if err != nil {
+		fmt.Printf("failed to get terminal size: %w", err)
+		return false
+	}
+
+	modes := ssh.TerminalModes{
+		ssh.ECHO:          1,
+		ssh.TTY_OP_ISPEED: 14400,
+		ssh.TTY_OP_OSPEED: 14400,
+	}
+
+	if err = session.RequestPty("xterm", height, width, modes); err != nil {
+		fmt.Printf("request for PTY failed: %w", err)
+		return false
+	}
+
+	// Attach input/output
+	session.Stdin = os.Stdin
+	session.Stdout = os.Stdout
+	session.Stderr = os.Stderr
+
+	// Start the shell
+	if err = session.Shell(); err != nil {
+		fmt.Printf("failed to start shell: %w", err)
+		return false
+	}
+
+	// Wait until session exits
+	if err = session.Wait(); err != nil {
+		fmt.Printf("session ended with error: %w", err)
+		return false
+	}
+
+	return true
+}
+
+func splitSSHConnectionString(connStr string) (user, host string, err error) {
+	atIndex := strings.LastIndex(connStr, "@")
+	if atIndex == -1 {
+		return "", "", fmt.Errorf("invalid connection string: no '@' found")
+	}
+
+	user = connStr[:atIndex]
+	host = connStr[atIndex+1:]
+	return user, host, nil
 }

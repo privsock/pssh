@@ -12,7 +12,7 @@ import (
 
 var RootCmd = &cobra.Command{
 	Use:     "pssh user@address",
-	Version: "0.1.3",
+	Version: "0.1.4",
 	Short:   "pssh is an ssh connection client for the CyberArk platform",
 	Run:     rootCmdEntrypoint,
 	Args:    cobra.ExactArgs(1),
