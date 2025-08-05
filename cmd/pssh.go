@@ -14,19 +14,15 @@ import (
 	"github.com/Kalybus/ark-sdk-golang/pkg/services/sia/sso"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"golang.org/x/crypto/ssh"
-	"golang.org/x/term"
 	"os"
-	"os/exec"
 	"pssh/cmd/config"
 	"pssh/utils"
 	"slices"
-	"strings"
+	"syscall"
 )
 
 type PSSH struct {
 	profile *models.ArkProfile
-	logger  *common.ArkLogger
 	cmd     *cobra.Command
 	args    []string
 }
@@ -38,25 +34,21 @@ type PSSH struct {
 // IsAuthenticated Returns true if the authenticator is already authenticated
 func (pssh *PSSH) IsAuthenticated(authenticator auth.ArkAuth) bool {
 	refreshToken, _ := pssh.cmd.Flags().GetBool("refresh-auth")
-	if authenticator.IsAuthenticated(pssh.profile) {
-		if refreshToken {
-			_, err := authenticator.LoadAuthentication(pssh.profile, true)
-			if err == nil {
-				args.PrintSuccess(fmt.Sprintf("%s Authentication Refreshed",
-					authenticator.AuthenticatorHumanReadableName()))
-				return true
-			} else {
-				pssh.logger.Info(fmt.Sprintf("%s Failed to refresh token, performing normal login [%s]",
-					authenticator.AuthenticatorHumanReadableName(), err))
-				return false
-			}
-		} else {
-			args.PrintSuccess(fmt.Sprintf("%s Already Authenticated",
-				authenticator.AuthenticatorHumanReadableName()))
-			return true
-		}
+	if !authenticator.IsAuthenticated(pssh.profile) {
+		return false
 	}
-	return false
+	if !refreshToken {
+		return true
+	}
+	_, err := authenticator.LoadAuthentication(pssh.profile, true)
+	if err != nil {
+		args.PrintNormal(fmt.Sprintf("%s Failed to refresh token, performing normal login [%s]",
+			authenticator.AuthenticatorHumanReadableName(), err))
+		return false
+	}
+	args.PrintSuccess(fmt.Sprintf("%s Authentication Refreshed",
+		authenticator.AuthenticatorHumanReadableName()))
+	return true
 }
 
 // AskUsername Fetch user from configuration file or ask for username interactively
@@ -138,17 +130,11 @@ func (pssh *PSSH) DisplayAuthenticatedProfiles(tokensMap map[string]*authmodels.
 			continue
 		}
 		args.PrintSuccess(fmt.Sprintf("Authenticated as %s until %s", tokenMap["username"], parsedTime))
-		// Fix a glitch when the user types Enter, the "Mobile authentication waiting for input..." appears again
-		// The glitch is caused by the Ask.Password{} in the polling goroutine, waiting for a user input
-		_, err = os.Stdin.Write([]byte("\n"))
-		if err != nil {
-			return
-		}
 	}
 }
 
 // Authenticate Perform user authentication using the ark profile
-func (pssh *PSSH) Authenticate() (bool, error) {
+func (pssh *PSSH) Authenticate() error {
 	/******************************************************************************************************
 	 * Code is heavily based on func ArkLoginAction::runLoginAction(cmd *cobra.Command, loginArgs []string)
 	 * at ark_login_action.go
@@ -161,31 +147,42 @@ func (pssh *PSSH) Authenticate() (bool, error) {
 	refreshAuth, _ := pssh.cmd.Flags().GetBool("refresh-auth")
 	for authenticatorName, authProfile := range pssh.profile.AuthProfiles {
 		authenticator := auth.SupportedAuthenticators[authenticatorName]
-		// Skip authentication if already authenticated
+		/* Skip authentication if already authenticated */
 		if !force && pssh.IsAuthenticated(authenticator) {
 			tokensMap[authenticator.AuthenticatorHumanReadableName()] = authenticator.(*auth.ArkISPAuth).Token
 			continue
 		}
-		// Skip unsupported authentication type: Unknown auth method or non-interactive authentication
+		/* Skip unsupported authentication type: Unknown auth method or non-interactive authentication */
 		if !common.IsInteractive() || !slices.Contains(authmodels.ArkAuthMethodsRequireCredentials, authProfile.AuthMethod) {
 			continue
 		}
-		// Perform user authentication
+		/* Perform user authentication */
 		authProfile.Username = pssh.AskUsername(authenticatorName)
 		secret := &authmodels.ArkSecret{Secret: pssh.AskSecret(authenticatorName, sharedSecretsMap)}
+		// Partially fixes a glitch when the user types Enter, the "Sent Mobile Authenticator request to your device..." appears again
+		// The glitch is caused by the Ask.One(survey.Password{}) in the polling goroutine, which waits for a user input
+		// SaveStdin and RestoreStdin help prevent the surveys to break the shell.
+		stdin, t, err := utils.SaveStdin()
+		if err != nil {
+			return err
+		}
 		token, err := authenticator.Authenticate(pssh.profile, nil, secret, force, refreshAuth)
 		if err != nil {
 			args.PrintFailure(fmt.Sprintf("Failed to authenticate with %s: %s", authenticator.AuthenticatorHumanReadableName(), err))
-			return false, err
+			return err
 		}
-		// Store shared password for other authenticators
+		err = utils.RestoreStdin(stdin, t)
+		if err != nil {
+			return err
+		}
+		/* Store shared password for other authenticators */
 		noSharedSecrets, _ := pssh.cmd.Flags().GetBool("no-shared-secrets")
 		if !noSharedSecrets && slices.Contains(authmodels.ArkAuthMethodSharableCredentials, authProfile.AuthMethod) {
 			sharedSecretsMap[authProfile.AuthMethod] = append(sharedSecretsMap[authProfile.AuthMethod], [2]string{authProfile.Username, secret.Secret})
 		}
 		tokensMap[authenticator.AuthenticatorHumanReadableName()] = token
 	}
-	return true, nil
+	return nil
 }
 
 /***************
@@ -241,135 +238,22 @@ func (pssh *PSSH) ConnectWithSIA(keyPath string) error {
 	// VTL: <username>@<login_suffix>#<subdomain>@<target_user>#account_domain@<target>[:target_port]#<NetworkName>@<SSH gateway> <inline_commands>
 	connString := fmt.Sprintf("%s#%s@%s%s@%s", username, subdomain, content, network, host)
 	cmdArgs = append(cmdArgs, connString)
-	client := SSHNativeConnection{}
-	client.Connect(cmdArgs)
+	err = pssh.Connect(cmdArgs)
+	if err != nil {
+		return nil
+	}
 	return nil
 }
 
-type SSHClient interface {
-	Connect(cmdArgs string) bool
-}
-
-type SSHNativeConnection struct {
-	SSHClient
-}
-
 // Connect Connects using the system ssh client
-func (client *SSHNativeConnection) Connect(cmdArgs []string) bool {
-	sshCmd := exec.Command("ssh", cmdArgs...)
-	sshCmd.Stdout = os.Stdout
-	sshCmd.Stderr = os.Stderr
-	sshCmd.Stdin = os.Stdin
-
-	// SSH connection
-	err := sshCmd.Run()
+func (pssh *PSSH) Connect(cmdArgs []string) error {
+	sysArgs := []string{"ssh"}
+	sysArgs = append(sysArgs, cmdArgs...)
+	err := syscall.Exec("/usr/bin/ssh", sysArgs, os.Environ())
+	// Except for any error, program should stop here
 	if err != nil {
-		args.PrintFailure(fmt.Sprintf("client error: %s", err.Error()))
-		return false
-	}
-	return true
-}
-
-type SSHGolangConnection struct {
-	SSHClient
-}
-
-// Connect Connects using the golang ssh client (WIP)
-func (client *SSHGolangConnection) Connect(cmdArgs []string) bool {
-	key, err := os.ReadFile(cmdArgs[1])
-	if err != nil {
-		fmt.Printf("unable to read private key: %w\n", err)
-		return false
+		return err
 	}
 
-	signer, err := ssh.ParsePrivateKey(key)
-	if err != nil {
-		fmt.Printf("unable to parse private key: %w\n", err)
-		return false
-	}
-
-	username, host, err := splitSSHConnectionString(cmdArgs[len(cmdArgs)-1])
-	if err != nil {
-		return false
-	}
-
-	sshClientConfig := &ssh.ClientConfig{
-		User: username,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
-		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // for simplicity; not safe for production
-	}
-
-	address := fmt.Sprintf("%s:%s", host, "22")
-
-	sshClient, err := ssh.Dial("tcp", address, sshClientConfig)
-	if err != nil {
-		fmt.Printf("failed to dial: %w", err)
-		return false
-	}
-	defer sshClient.Close()
-
-	session, err := sshClient.NewSession()
-	if err != nil {
-		fmt.Printf("failed to create session: %w", err)
-		return false
-	}
-	defer session.Close()
-
-	// Set up terminal modes
-	fd := int(os.Stdin.Fd())
-	oldState, err := term.MakeRaw(fd)
-	if err != nil {
-		fmt.Printf("failed to set raw terminal mode: %w", err)
-		return false
-	}
-	defer term.Restore(fd, oldState)
-
-	width, height, err := term.GetSize(fd)
-	if err != nil {
-		fmt.Printf("failed to get terminal size: %w", err)
-		return false
-	}
-
-	modes := ssh.TerminalModes{
-		ssh.ECHO:          1,
-		ssh.TTY_OP_ISPEED: 14400,
-		ssh.TTY_OP_OSPEED: 14400,
-	}
-
-	if err = session.RequestPty("xterm", height, width, modes); err != nil {
-		fmt.Printf("request for PTY failed: %w", err)
-		return false
-	}
-
-	// Attach input/output
-	session.Stdin = os.Stdin
-	session.Stdout = os.Stdout
-	session.Stderr = os.Stderr
-
-	// Start the shell
-	if err = session.Shell(); err != nil {
-		fmt.Printf("failed to start shell: %w", err)
-		return false
-	}
-
-	// Wait until session exits
-	if err = session.Wait(); err != nil {
-		fmt.Printf("session ended with error: %w", err)
-		return false
-	}
-
-	return true
-}
-
-func splitSSHConnectionString(connStr string) (user, host string, err error) {
-	atIndex := strings.LastIndex(connStr, "@")
-	if atIndex == -1 {
-		return "", "", fmt.Errorf("invalid connection string: no '@' found")
-	}
-
-	user = connStr[:atIndex]
-	host = connStr[atIndex+1:]
-	return user, host, nil
+	return nil
 }

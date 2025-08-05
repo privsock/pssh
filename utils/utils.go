@@ -8,6 +8,7 @@ import (
 	"github.com/Kalybus/ark-sdk-golang/pkg/models"
 	"github.com/Kalybus/ark-sdk-golang/pkg/profiles"
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/term"
 	"os"
 	"time"
 )
@@ -99,4 +100,21 @@ func ParseTokenDateString(dateStr string) (string, error) {
 	formatted := localTime.Format("2006-01-02 15:04:05")
 
 	return formatted, nil
+}
+
+func SaveStdin() (int, *term.State, error) {
+	fd := int(os.Stdin.Fd())
+	state, err := term.GetState(fd)
+	if err != nil {
+		return fd, nil, err
+	}
+	return fd, state, nil
+}
+
+func RestoreStdin(fd int, state *term.State) error {
+	err := term.Restore(fd, state)
+	if err != nil {
+		return err
+	}
+	return nil
 }

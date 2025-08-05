@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"github.com/Kalybus/ark-sdk-golang/pkg/actions"
-	"github.com/Kalybus/ark-sdk-golang/pkg/common"
 	"github.com/Kalybus/ark-sdk-golang/pkg/common/args"
 	"github.com/Kalybus/ark-sdk-golang/pkg/profiles"
 	"github.com/spf13/cobra"
@@ -12,7 +11,7 @@ import (
 
 var RootCmd = &cobra.Command{
 	Use:     "pssh user@address",
-	Version: "0.1.4",
+	Version: "0.1.5",
 	Short:   "pssh is an ssh connection client for the CyberArk platform",
 	Run:     rootCmdEntrypoint,
 	Args:    cobra.ExactArgs(1),
@@ -48,22 +47,15 @@ func rootCmdEntrypoint(cmd *cobra.Command, execArgs []string) {
 	}
 	pssh := PSSH{
 		profile: utils.GetProfile(profileName),
-		logger:  common.GetLogger("PSSH", common.Unknown),
 		cmd:     cmd,
 		args:    execArgs,
 	}
 
-	authenticated, err := pssh.Authenticate()
+	err := pssh.Authenticate()
 	if err != nil {
-
 		return
 	}
-	if !authenticated {
-		return
-	}
-
-	sshKeyPath := pssh.GenerateSSHToken()
-	err = pssh.ConnectWithSIA(sshKeyPath)
+	err = pssh.ConnectWithSIA(pssh.GenerateSSHToken())
 	if err != nil {
 		args.PrintFailure("Failed to connect")
 		return
