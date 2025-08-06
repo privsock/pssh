@@ -11,7 +11,12 @@ import (
 )
 
 func createSocketListener() (net.Listener, error) {
-	return winio.ListenPipe(ssh_agent.SocketPath(), nil)
+	cfg := &winio.PipeConfig{
+		SecurityDescriptor: "", // Allow full access to Everyone (WD = World)
+		InputBufferSize:    4096,
+		OutputBufferSize:   4096,
+	}
+	return winio.ListenPipe(ssh_agent.SocketPath(), cfg)
 }
 
 func StartInBackground() error {

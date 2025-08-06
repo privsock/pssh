@@ -19,7 +19,6 @@ import (
 	"pssh/ssh_agent"
 	"pssh/utils"
 	"slices"
-	"syscall"
 )
 
 type PSSH struct {
@@ -269,11 +268,6 @@ func (pssh *PSSH) Connect(cmdArgs []string) error {
 		return fmt.Errorf("failed to detect ssh path: %s", err)
 	}
 	environ := utils.AddOrUpdateEnv(os.Environ(), "SSH_AUTH_SOCK", ssh_agent.SocketPath())
-
-	err = syscall.Exec(sshPath, sysArgs, environ)
-	// Except for any error, program should stop here
-	if err != nil {
-		return err
-	}
+	ProgramExec(sshPath, sysArgs, environ)
 	return nil
 }

@@ -1,9 +1,13 @@
 package ark
 
 import (
+	"fmt"
 	"github.com/Kalybus/ark-sdk-golang/pkg/actions"
 	"github.com/Kalybus/ark-sdk-golang/pkg/profiles"
 	"github.com/spf13/cobra"
+	"os"
+	"path/filepath"
+	"runtime"
 )
 
 var ArkCmd = &cobra.Command{
@@ -16,6 +20,9 @@ var ArkCmd = &cobra.Command{
 }
 
 func init() {
+	if runtime.GOOS == "windows" {
+		setHomeFromDiskAndDir()
+	}
 	profilesLoader := profiles.DefaultProfilesLoader()
 	arkActions := []actions.ArkAction{
 		actions.NewArkProfilesAction(profilesLoader),
@@ -25,4 +32,21 @@ func init() {
 	for _, action := range arkActions {
 		action.DefineAction(ArkCmd)
 	}
+}
+
+func setHomeFromDiskAndDir() error {
+	if os.Getenv("HOME") != "" {
+		// HOME already set, do nothing
+		return nil
+	}
+
+	homeDisk := os.Getenv("HOMEDRIVE")
+	homeDir := os.Getenv("HOMEPATH")
+
+	if homeDisk == "" || homeDir == "" {
+		return fmt.Errorf("HOMEDRIVE or HOMEPATH not set")
+	}
+
+	home := filepath.Clean(filepath.Join(homeDisk, homeDir))
+	return os.Setenv("HOME", home)
 }
