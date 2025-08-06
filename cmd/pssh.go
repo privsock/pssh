@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/viper"
 	"os"
 	"pssh/cmd/config"
+	"pssh/ssh_agent"
 	"pssh/utils"
 	"slices"
 	"syscall"
@@ -101,12 +102,10 @@ func (pssh *PSSH) DisplayAuthenticatedProfiles(tokensMap map[string]*authmodels.
 		data, _ := json.Marshal(v)
 		err := json.Unmarshal(data, &tokenMap)
 		if err != nil {
-			args.PrintFailure("Failed to parse token")
 			continue
 		}
 		parsedTime, err := utils.ParseTokenDateString(tokenMap["expires_in"].(string))
 		if err != nil {
-			args.PrintFailure("Failed to parse date")
 			continue
 		}
 		args.PrintSuccess(fmt.Sprintf("Authenticated as %s until %s", tokenMap["username"], parsedTime))
@@ -164,16 +163,15 @@ func (pssh *PSSH) Authenticate() error {
 		// SaveStdin and RestoreStdin help prevent the surveys to break the shell.
 		stdin, t, err := utils.SaveStdin()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to save stdin before authentication: %s", err)
 		}
 		token, err := authenticator.Authenticate(pssh.profile, nil, secret, force, refreshAuth)
 		if err != nil {
-			args.PrintFailure(fmt.Sprintf("Failed to authenticate with %s: %s", authenticator.AuthenticatorHumanReadableName(), err))
-			return err
+			return fmt.Errorf("failed to authenticate with %s: %s", authenticator.AuthenticatorHumanReadableName(), err)
 		}
 		err = utils.RestoreStdin(stdin, t)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to restore stdin after authentication: %s", err)
 		}
 		/* Store shared password for other authenticators */
 		noSharedSecrets, _ := pssh.cmd.Flags().GetBool("no-shared-secrets")
@@ -265,11 +263,17 @@ func (pssh *PSSH) Connect(cmdArgs []string) error {
 	sysArgs := []string{"ssh"}
 	sysArgs = append(sysArgs, cmdArgs...)
 	// TODO Detect ssh path dynamically
-	err := syscall.Exec("/usr/bin/ssh", sysArgs, os.Environ())
+
+	sshPath, err := utils.DetectSSHPath()
+	if err != nil {
+		return fmt.Errorf("failed to detect ssh path: %s", err)
+	}
+	environ := utils.AddOrUpdateEnv(os.Environ(), "SSH_AUTH_SOCK", ssh_agent.SocketPath())
+
+	err = syscall.Exec(sshPath, sysArgs, environ)
 	// Except for any error, program should stop here
 	if err != nil {
 		return err
 	}
-
 	return nil
 }

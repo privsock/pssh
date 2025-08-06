@@ -1,4 +1,4 @@
-package ssh_agent
+package client
 
 import (
 	"crypto"

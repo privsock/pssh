@@ -20,7 +20,7 @@ var ConfigCmd = &cobra.Command{
 		ConfigureString("ark_profile", "Enter Ark profile name", "", false)
 		ConfigureString("login_username", "Enter username", "", true)
 		ConfigureString("sia_network", "Enter SIA preferred network (e.g default)", "default_network", false)
-		ConfigureUint32("key_lifetime", "Enter the ssh mfa key lifetime in seconds (e.g 900)", 900, false)
+		ConfigureUint32("key_lifetime", "Enter the sia mfa key lifetime in seconds (e.g 900)", 900, false)
 	},
 }
 
@@ -68,8 +68,6 @@ func ConfigureUint32(key string, prompt string, defaultValue uint32, required bo
 			Default: strconv.FormatUint(uint64(keyVal), 10),
 		}
 		err := survey.AskOne(prompt, &keyVal)
-
-		//_, err := fmt.Scan(&keyVal)
 		cobra.CheckErr(err)
 
 		if keyVal != 0 {

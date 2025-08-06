@@ -5,7 +5,7 @@ import (
 	"github.com/spf13/cobra"
 	"os"
 	"pssh/cmd/config"
-	"pssh/ssh_agent"
+	sshagentclient "pssh/ssh_agent/client"
 	"pssh/utils"
 )
 
@@ -14,7 +14,10 @@ var keysAddCmd = &cobra.Command{
 	Short: "Add a key",
 	Long:  `Add an ssh key to the agent`,
 	Run: func(cmd *cobra.Command, args []string) {
-		AddMFAKey(cmd, args)
+		err := AddMFAKey(cmd, args)
+		if err != nil {
+			return
+		}
 	},
 	Args: cobra.ExactArgs(1),
 }
@@ -42,7 +45,7 @@ func AddMFAKey(cmd *cobra.Command, execArgs []string) error {
 		var err error
 		username, err = utils.GetUsername(profile)
 		if err != nil {
-			fmt.Println("[WARN] Missing username for mfa key, using default (pssh)")
+			return fmt.Errorf("missing username for sia key: %s", err)
 		}
 	}
 	if duration == 0 {
@@ -52,7 +55,7 @@ func AddMFAKey(cmd *cobra.Command, execArgs []string) error {
 		duration = 3600
 	}
 	key, err := os.ReadFile(keyPath)
-	err = ssh_agent.AddKey(username, string(key), duration)
+	err = sshagentclient.AddKey(username, string(key), duration)
 	if err != nil {
 		return err
 	}

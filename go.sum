@@ -9,6 +9,8 @@ github.com/Iilun/survey/v2 v2.5.3 h1:pjtbpj0gVrmyWAhx5hHVgX9zkcIeRnSi2+KZMTLsbME
 github.com/Iilun/survey/v2 v2.5.3/go.mod h1:pr7DbMjtOeJtqB/B/bGxgHIDm7FUc+9MpKKVLZKW3vU=
 github.com/Kalybus/ark-sdk-golang v0.0.0-20250802133948-b0fc7f90d464 h1:DC/8z3lIBAvqFozqttnnGBY3ki6Qe3gpYWuPJYsVPzE=
 github.com/Kalybus/ark-sdk-golang v0.0.0-20250802133948-b0fc7f90d464/go.mod h1:TGAU3qm2e9ZsJNZZgIm/QGeuYZfJQfmIy/ewEdoTH28=
+github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
+github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/Netflix/go-expect v0.0.0-20220104043353-73e0943537d2 h1:+vx7roKuyA63nhn5WAunQHLTznkw5W8b1Xc0dNjp83s=
 github.com/Netflix/go-expect v0.0.0-20220104043353-73e0943537d2/go.mod h1:HBCaDeC1lPdgDeDbhX8XFpy1jqjK0IBG8W5K+xYqA0w=
 github.com/PuerkitoBio/goquery v1.10.3 h1:pFYcNSqHxBD06Fpj/KsbStFRsgRATgnf3LeXiUkhzPo=
