@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/viper"
 	"os"
 	"path"
+	"strconv"
 )
 
 var ConfigCmd = &cobra.Command{
@@ -19,6 +20,7 @@ var ConfigCmd = &cobra.Command{
 		ConfigureString("ark_profile", "Enter Ark profile name", "", false)
 		ConfigureString("login_username", "Enter username", "", true)
 		ConfigureString("sia_network", "Enter SIA preferred network (e.g default)", "default_network", false)
+		ConfigureUint32("key_lifetime", "Enter the ssh mfa key lifetime in seconds (e.g 900)", 900, false)
 	},
 }
 
@@ -36,11 +38,41 @@ func ConfigureString(key string, prompt string, defaultValue string, required bo
 			Default: keyVal,
 		}
 		err := survey.AskOne(prompt, &keyVal)
+		cobra.CheckErr(err)
+
+		if keyVal != "" {
+			Set(key, keyVal)
+		} else if isRequired {
+			args.PrintFailure(fmt.Sprintf("Please enter a valid value for the %s", key))
+		}
+	}
+}
+
+func Set(key string, value any) {
+	viper.Set(key, value)
+	err := viper.WriteConfig()
+	cobra.CheckErr(err)
+}
+
+func ConfigureUint32(key string, prompt string, defaultValue uint32, required bool) {
+	var keyVal uint32
+	var isRequired = true
+	for keyVal == 0 && isRequired {
+		keyVal = viper.GetUint32(key)
+		if keyVal == 0 {
+			keyVal = defaultValue
+		}
+		isRequired = required
+		prompt := &survey.Input{
+			Message: prompt,
+			Default: strconv.FormatUint(uint64(keyVal), 10),
+		}
+		err := survey.AskOne(prompt, &keyVal)
 
 		//_, err := fmt.Scan(&keyVal)
 		cobra.CheckErr(err)
 
-		if keyVal != "" {
+		if keyVal != 0 {
 			viper.Set(key, keyVal)
 			err = viper.WriteConfig()
 		} else if isRequired {
@@ -51,6 +83,10 @@ func ConfigureString(key string, prompt string, defaultValue string, required bo
 
 func GetString(key string) string {
 	return viper.GetString(key)
+}
+
+func GetUint32(key string) uint32 {
+	return viper.GetUint32(key)
 }
 
 func GetProfileName() string {

@@ -10,6 +10,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/term"
 	"os"
+	"pssh/cmd/config"
 	"time"
 )
 
@@ -45,7 +46,7 @@ func GetAuthenticators(profile *models.ArkProfile, refreshAuth bool) []auth.ArkA
 func GetSubdomain(profile *models.ArkProfile) (string, error) {
 	// Find an authentication token
 	var token string
-	authenticators := GetAuthenticators(profile, true)
+	authenticators := GetAuthenticators(profile, false)
 	for _, authenticator := range authenticators {
 		var ispAuth = authenticator.(*auth.ArkISPAuth)
 		if ispAuth.Token.Token != "" {
@@ -55,7 +56,6 @@ func GetSubdomain(profile *models.ArkProfile) (string, error) {
 	}
 
 	// Extract the subdomain from the token
-	var subdomain string
 	if token != "" {
 		parsedToken, _, err := new(jwt.Parser).ParseUnverified(token, jwt.MapClaims{})
 		if err != nil {
@@ -63,18 +63,22 @@ func GetSubdomain(profile *models.ArkProfile) (string, error) {
 		}
 		claims := parsedToken.Claims.(jwt.MapClaims)
 		if tokenSubdomain, ok := claims["subdomain"].(string); ok {
-			subdomain = tokenSubdomain
+			config.Set("known_subdomain", tokenSubdomain)
+			return tokenSubdomain, nil
 		}
 	}
 
-	if subdomain == "" {
-		// TODO Add subdomain to cmd parameters
-		args.PrintFailure("Missing subdomain. Please provide a subdomain manually")
-		return "", errors.New("missing subdomain")
+	// Extract last known domain
+	knownSubdomain := config.GetString("known_subdomain")
+	if knownSubdomain != "" {
+		return knownSubdomain, nil
 	}
 
-	return subdomain, nil
+	// TODO Add subdomain to cmd parameters
+	//args.PrintFailure("Missing subdomain. Please provide a subdomain manually")
+	return "", errors.New("missing subdomain")
 }
+
 func GetUsername(profile *models.ArkProfile) (string, error) {
 	var username string
 	for _, authProfile := range profile.AuthProfiles {
@@ -86,6 +90,19 @@ func GetUsername(profile *models.ArkProfile) (string, error) {
 		return "", errors.New("missing username")
 	}
 	return username, nil
+}
+
+func GetKeyName(profile *models.ArkProfile) (string, error) {
+	username, err := GetUsername(profile)
+	if err != nil {
+		return "", fmt.Errorf("failed to get username: %s", err)
+	}
+	domain, err := GetSubdomain(profile)
+	if err != nil {
+		return "", fmt.Errorf("failed to get domain: %s", err)
+	}
+	keyName := fmt.Sprintf("%s@%s", domain, username)
+	return keyName, nil
 }
 
 func ParseTokenDateString(dateStr string) (string, error) {

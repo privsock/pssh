@@ -31,26 +31,6 @@ type PSSH struct {
  * ISP Authentication
  ********************/
 
-// IsAuthenticated Returns true if the authenticator is already authenticated
-func (pssh *PSSH) IsAuthenticated(authenticator auth.ArkAuth) bool {
-	refreshToken, _ := pssh.cmd.Flags().GetBool("refresh-auth")
-	if !authenticator.IsAuthenticated(pssh.profile) {
-		return false
-	}
-	if !refreshToken {
-		return true
-	}
-	_, err := authenticator.LoadAuthentication(pssh.profile, true)
-	if err != nil {
-		args.PrintNormal(fmt.Sprintf("%s Failed to refresh token, performing normal login [%s]",
-			authenticator.AuthenticatorHumanReadableName(), err))
-		return false
-	}
-	args.PrintSuccess(fmt.Sprintf("%s Authentication Refreshed",
-		authenticator.AuthenticatorHumanReadableName()))
-	return true
-}
-
 // AskUsername Fetch user from configuration file or ask for username interactively
 func (pssh *PSSH) AskUsername(authenticatorName string) string {
 	authenticator := auth.SupportedAuthenticators[authenticatorName]
@@ -133,6 +113,26 @@ func (pssh *PSSH) DisplayAuthenticatedProfiles(tokensMap map[string]*authmodels.
 	}
 }
 
+// IsAuthenticated Returns true if the authenticator is already authenticated
+func (pssh *PSSH) IsAuthenticated(authenticator auth.ArkAuth) bool {
+	refreshToken, _ := pssh.cmd.Flags().GetBool("refresh-auth")
+	if !authenticator.IsAuthenticated(pssh.profile) {
+		return false
+	}
+	if !refreshToken {
+		return true
+	}
+	_, err := authenticator.LoadAuthentication(pssh.profile, true)
+	if err != nil {
+		args.PrintNormal(fmt.Sprintf("%s Failed to refresh token, performing normal login [%s]",
+			authenticator.AuthenticatorHumanReadableName(), err))
+		return false
+	}
+	args.PrintSuccess(fmt.Sprintf("%s Authentication Refreshed",
+		authenticator.AuthenticatorHumanReadableName()))
+	return true
+}
+
 // Authenticate Perform user authentication using the ark profile
 func (pssh *PSSH) Authenticate() error {
 	/******************************************************************************************************
@@ -189,8 +189,8 @@ func (pssh *PSSH) Authenticate() error {
  * SIA Functions
  ***************/
 
-// GenerateSSHToken Create an SSO service from the authenticator above
-func (pssh *PSSH) GenerateSSHToken() string {
+// GenerateSSHToken Create an SSO service from the authenticator
+func (pssh *PSSH) GenerateSSHToken() (string, error) {
 	refreshAuth, _ := pssh.cmd.Flags().GetBool("refresh-auth")
 
 	authenticators := utils.GetAuthenticators(pssh.profile, refreshAuth)
@@ -201,14 +201,30 @@ func (pssh *PSSH) GenerateSSHToken() string {
 	}
 
 	// Generate a short-lived password for RDP
+	path, err := os.MkdirTemp("", "pssh-mfa-*")
+	defer func(path string) {
+		err = os.RemoveAll(path)
+		if err != nil {
+			args.PrintFailure(fmt.Sprintf("Failed to remove temporary directory: %s", err))
+		}
+	}(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to create temporary directory: %s", err)
+	}
 	sshKeyPath, err := ssoService.ShortLivedSSHKey(
-		&ssomodels.ArkSIASSOGetSSHKey{},
-	)
-	return sshKeyPath
+		&ssomodels.ArkSIASSOGetSSHKey{
+			Folder: path,
+		})
+	key, err := os.ReadFile(sshKeyPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read ssh key file: %s", err)
+	}
+	return string(key), nil
 }
 
-func (pssh *PSSH) ConnectWithSIA(keyPath string) error {
-	cmdArgs := []string{"-i", keyPath, "-o", "IdentitiesOnly=yes"}
+// ConnectWithSIA Start an ssh connection using keypath
+func (pssh *PSSH) ConnectWithSIA() error {
+	cmdArgs := []string{"-o", "IdentityFile=none"}
 	username, err := utils.GetUsername(pssh.profile)
 	if err != nil {
 		return err
@@ -222,7 +238,6 @@ func (pssh *PSSH) ConnectWithSIA(keyPath string) error {
 	}
 	content := pssh.args[0]
 	host := fmt.Sprintf("%s.ssh.cyberark.cloud", subdomain)
-
 	network, err := pssh.cmd.Flags().GetString("network")
 	if err != nil {
 		return errors.New("missing network")
@@ -249,6 +264,7 @@ func (pssh *PSSH) ConnectWithSIA(keyPath string) error {
 func (pssh *PSSH) Connect(cmdArgs []string) error {
 	sysArgs := []string{"ssh"}
 	sysArgs = append(sysArgs, cmdArgs...)
+	// TODO Detect ssh path dynamically
 	err := syscall.Exec("/usr/bin/ssh", sysArgs, os.Environ())
 	// Except for any error, program should stop here
 	if err != nil {
