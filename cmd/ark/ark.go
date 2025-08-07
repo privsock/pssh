@@ -13,10 +13,7 @@ import (
 var ArkCmd = &cobra.Command{
 	Use:   "ark",
 	Short: "Ark commands",
-	//Run: func(cmd *cobra.Command, args []string) {
-	//	commonargs.PrintFailure("Please choose an action (e.g. configure)")
-	//},
-	Args: cobra.NoArgs,
+	Args:  cobra.NoArgs,
 }
 
 func init() {
