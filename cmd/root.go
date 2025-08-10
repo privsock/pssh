@@ -7,9 +7,12 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh/agent"
 	"pssh/cmd/ark"
-	"pssh/cmd/config"
+	configCmd "pssh/cmd/config"
 	"pssh/cmd/keys"
 	"pssh/cmd/mfa_agent"
+	"pssh/config"
+	"pssh/core"
+	"pssh/ssh_agent"
 	sshagentclient "pssh/ssh_agent/client"
 	sshagentserver "pssh/ssh_agent/server"
 	"pssh/utils"
@@ -31,7 +34,7 @@ func init() {
 	RootCmd.Flags().Bool("force", false, "Whether to force login even though token has not expired yet")
 	RootCmd.Flags().Bool("refresh-auth", false, "If a cache exists, will also try to refresh it")
 
-	RootCmd.AddCommand(config.ConfigCmd)
+	RootCmd.AddCommand(configCmd.ConfigCmd)
 	RootCmd.AddCommand(keys.KeysCmd)
 	RootCmd.AddCommand(ark.ArkCmd)
 	RootCmd.AddCommand(mfa_agent.MfaAgentCmd)
@@ -39,40 +42,29 @@ func init() {
 
 // rootCmdEntrypoint Authenticate and performs SSH connection
 func rootCmdEntrypoint(cmd *cobra.Command, execArgs []string) {
-	profileName, _ := cmd.Flags().GetString("profile-name")
-	if profileName == "" {
-		profileName = config.GetProfileName()
-	}
-	profile := utils.GetProfile(profileName)
-	pssh := PSSH{
-		profile: profile,
-		cmd:     cmd,
-		args:    execArgs,
-	}
-
+	pssh := core.NewPSSH(cmd, execArgs)
 	if !sshagentserver.IsRunning() {
 		err := sshagentserver.StartInBackground()
 		if err != nil {
-			//args.PrintFailure("Fail to start MFA agent")
+			args.PrintFailure("Fail to start MFA agent")
 			return
-		} else {
-			//args.PrintSuccess("SIA SSH agent started")
 		}
+		args.PrintSuccess(fmt.Sprintf("MFA agent started at %s", ssh_agent.SocketPath()))
 	}
 
-	foundKeys, err := FoundMfaKey(profile)
+	foundKeys, err := FoundMfaKey(pssh.Profile)
 	if err != nil {
 		// TODO Debug failing to fetch an mfa key
 	}
 	if !foundKeys { // Using a bool here crashes the debugger somehow...
 		err := pssh.Authenticate()
 		if err != nil {
-			args.PrintWarning(fmt.Sprintf("Profile %s failed to authenticate, %s", profileName, err))
+			args.PrintWarning(fmt.Sprintf("Profile %s failed to authenticate, %s", pssh.Profile.ProfileName, err))
 		}
 
 		// Update keyName after authentication
 		var keyName string
-		keyName, err = utils.GetKeyName(profile)
+		keyName, err = utils.GetKeyName(pssh.Profile)
 		if err != nil {
 			args.PrintFailure(fmt.Sprintf("Failed getting key name: %s\n", err))
 		}

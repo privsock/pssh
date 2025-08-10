@@ -1,4 +1,4 @@
-package cmd
+package core
 
 import (
 	"encoding/json"
@@ -11,25 +11,48 @@ import (
 	"github.com/Kalybus/ark-sdk-golang/pkg/models"
 	authmodels "github.com/Kalybus/ark-sdk-golang/pkg/models/auth"
 	ssomodels "github.com/Kalybus/ark-sdk-golang/pkg/models/services/sia/sso"
+	"github.com/Kalybus/ark-sdk-golang/pkg/profiles"
 	"github.com/Kalybus/ark-sdk-golang/pkg/services/sia/sso"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"os"
-	"pssh/cmd/config"
+	"pssh/config"
 	"pssh/ssh_agent"
 	"pssh/utils"
 	"slices"
 )
 
 type PSSH struct {
-	profile *models.ArkProfile
-	cmd     *cobra.Command
-	args    []string
+	Profile *models.ArkProfile
+	Cmd     *cobra.Command
+	Args    []string
 }
 
 /********************
  * ISP Authentication
  ********************/
+
+func NewPSSH(cmd *cobra.Command, execArgs []string) *PSSH {
+	profileName, _ := cmd.Flags().GetString("profile-name")
+	if profileName == "" {
+		profileName = GetProfileName()
+	}
+	profile := utils.GetProfile(profileName)
+	pssh := PSSH{
+		Profile: profile,
+		Cmd:     cmd,
+		Args:    execArgs,
+	}
+	return &pssh
+}
+
+func GetProfileName() string {
+	profile := config.GetString("ark_profile")
+	if profile == "" {
+		profile = profiles.DefaultProfileName()
+	}
+	return profile
+}
 
 // AskUsername Fetch user from configuration file or ask for username interactively
 func (pssh *PSSH) AskUsername(authenticatorName string) string {
@@ -39,7 +62,7 @@ func (pssh *PSSH) AskUsername(authenticatorName string) string {
 		return username
 	}
 	username, _ = args.GetArg(
-		pssh.cmd,
+		pssh.Cmd,
 		fmt.Sprintf("%s-username", authenticatorName),
 		fmt.Sprintf("%s Username", authenticator.AuthenticatorHumanReadableName()),
 		"",
@@ -52,7 +75,7 @@ func (pssh *PSSH) AskUsername(authenticatorName string) string {
 
 // AskSecret Fetch secret from configuration file or ask for password interactively
 func (pssh *PSSH) AskSecret(authenticatorName string, sharedSecretsMap map[authmodels.ArkAuthMethod][][2]string) string {
-	authProfile := pssh.profile.AuthProfiles[authenticatorName]
+	authProfile := pssh.Profile.AuthProfiles[authenticatorName]
 	authenticator := auth.SupportedAuthenticators[authenticatorName]
 
 	// Get password: from shared secret
@@ -73,7 +96,7 @@ func (pssh *PSSH) AskSecret(authenticatorName string, sharedSecretsMap map[authm
 	}
 	// Get password: Interactively
 	secretStr, err := args.GetArg(
-		pssh.cmd,
+		pssh.Cmd,
 		fmt.Sprintf("%s-secret", authenticatorName),
 		fmt.Sprintf("%s Secret", authenticator.AuthenticatorHumanReadableName()),
 		"",
@@ -113,14 +136,14 @@ func (pssh *PSSH) DisplayAuthenticatedProfiles(tokensMap map[string]*authmodels.
 
 // IsAuthenticated Returns true if the authenticator is already authenticated
 func (pssh *PSSH) IsAuthenticated(authenticator auth.ArkAuth) bool {
-	refreshToken, _ := pssh.cmd.Flags().GetBool("refresh-auth")
-	if !authenticator.IsAuthenticated(pssh.profile) {
+	refreshToken, _ := pssh.Cmd.Flags().GetBool("refresh-auth")
+	if !authenticator.IsAuthenticated(pssh.Profile) {
 		return false
 	}
 	if !refreshToken {
 		return true
 	}
-	_, err := authenticator.LoadAuthentication(pssh.profile, true)
+	_, err := authenticator.LoadAuthentication(pssh.Profile, true)
 	if err != nil {
 		args.PrintNormal(fmt.Sprintf("%s Failed to refresh token, performing normal login [%s]",
 			authenticator.AuthenticatorHumanReadableName(), err))
@@ -131,8 +154,16 @@ func (pssh *PSSH) IsAuthenticated(authenticator auth.ArkAuth) bool {
 	return true
 }
 
-// Authenticate Perform user authentication using the ark profile
 func (pssh *PSSH) Authenticate() error {
+	return pssh.AuthenticateArk()
+}
+
+func (pssh *PSSH) AuthenticateOIDC() error {
+	return nil
+}
+
+// Authenticate Perform user authentication using the ark profile
+func (pssh *PSSH) AuthenticateArk() error {
 	/******************************************************************************************************
 	 * Code is heavily based on func ArkLoginAction::runLoginAction(cmd *cobra.Command, loginArgs []string)
 	 * at ark_login_action.go
@@ -141,9 +172,9 @@ func (pssh *PSSH) Authenticate() error {
 	sharedSecretsMap := make(map[authmodels.ArkAuthMethod][][2]string)
 
 	defer pssh.DisplayAuthenticatedProfiles(tokensMap)
-	force, _ := pssh.cmd.Flags().GetBool("force")
-	refreshAuth, _ := pssh.cmd.Flags().GetBool("refresh-auth")
-	for authenticatorName, authProfile := range pssh.profile.AuthProfiles {
+	force, _ := pssh.Cmd.Flags().GetBool("force")
+	refreshAuth, _ := pssh.Cmd.Flags().GetBool("refresh-auth")
+	for authenticatorName, authProfile := range pssh.Profile.AuthProfiles {
 		authenticator := auth.SupportedAuthenticators[authenticatorName]
 		/* Skip authentication if already authenticated */
 		if !force && pssh.IsAuthenticated(authenticator) {
@@ -164,7 +195,7 @@ func (pssh *PSSH) Authenticate() error {
 		if err != nil {
 			return fmt.Errorf("failed to save stdin before authentication: %s", err)
 		}
-		token, err := authenticator.Authenticate(pssh.profile, nil, secret, force, refreshAuth)
+		token, err := authenticator.Authenticate(pssh.Profile, nil, secret, force, refreshAuth)
 		if err != nil {
 			return fmt.Errorf("failed to authenticate with %s: %s", authenticator.AuthenticatorHumanReadableName(), err)
 		}
@@ -173,7 +204,7 @@ func (pssh *PSSH) Authenticate() error {
 			return fmt.Errorf("failed to restore stdin after authentication: %s", err)
 		}
 		/* Store shared password for other authenticators */
-		noSharedSecrets, _ := pssh.cmd.Flags().GetBool("no-shared-secrets")
+		noSharedSecrets, _ := pssh.Cmd.Flags().GetBool("no-shared-secrets")
 		if !noSharedSecrets && slices.Contains(authmodels.ArkAuthMethodSharableCredentials, authProfile.AuthMethod) {
 			sharedSecretsMap[authProfile.AuthMethod] = append(sharedSecretsMap[authProfile.AuthMethod], [2]string{authProfile.Username, secret.Secret})
 		}
@@ -188,9 +219,9 @@ func (pssh *PSSH) Authenticate() error {
 
 // GenerateSSHToken Create an SSO service from the authenticator
 func (pssh *PSSH) GenerateSSHToken() (string, error) {
-	refreshAuth, _ := pssh.cmd.Flags().GetBool("refresh-auth")
+	refreshAuth, _ := pssh.Cmd.Flags().GetBool("refresh-auth")
 
-	authenticators := utils.GetAuthenticators(pssh.profile, refreshAuth)
+	authenticators := utils.GetAuthenticators(pssh.Profile, refreshAuth)
 	ssoService, err := sso.NewArkSIASSOService(authenticators...)
 	if err != nil {
 		cobra.CheckErr(err)
@@ -222,20 +253,20 @@ func (pssh *PSSH) GenerateSSHToken() (string, error) {
 // ConnectWithSIA Start an ssh connection using keypath
 func (pssh *PSSH) ConnectWithSIA() error {
 	cmdArgs := []string{"-o", "IdentityFile=none"}
-	username, err := utils.GetUsername(pssh.profile)
+	username, err := utils.GetUsername(pssh.Profile)
 	if err != nil {
 		return err
 	}
-	subdomain, err := utils.GetSubdomain(pssh.profile)
+	subdomain, err := utils.GetSubdomain(pssh.Profile)
 	if err != nil {
 		return err
 	}
-	if len(pssh.args) == 0 {
+	if len(pssh.Args) == 0 {
 		return errors.New("missing [user@]hostname")
 	}
-	content := pssh.args[0]
+	content := pssh.Args[0]
 	host := fmt.Sprintf("%s.ssh.cyberark.cloud", subdomain)
-	network, err := pssh.cmd.Flags().GetString("network")
+	network, err := pssh.Cmd.Flags().GetString("network")
 	if err != nil {
 		return errors.New("missing network")
 	}

@@ -11,7 +11,7 @@ import (
 	"golang.org/x/term"
 	"os"
 	"os/exec"
-	"pssh/cmd/config"
+	"pssh/config"
 	"runtime"
 	"strings"
 	"time"

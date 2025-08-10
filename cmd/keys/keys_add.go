@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/spf13/cobra"
 	"os"
-	"pssh/cmd/config"
+	"pssh/config"
 	sshagentclient "pssh/ssh_agent/client"
 	"pssh/utils"
 )
