@@ -6,7 +6,7 @@ toolchain go1.24.1
 
 require (
 	github.com/Iilun/survey/v2 v2.5.3
-	github.com/Kalybus/ark-sdk-golang v0.0.0-20250822091232-4cee34000975
+	github.com/Kalybus/ark-sdk-golang v0.0.0-20250822194233-8dce59ebca1a
 	github.com/Microsoft/go-winio v0.6.2
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/spf13/cobra v1.9.1
