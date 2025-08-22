@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"github.com/Kalybus/ark-sdk-golang/pkg/common"
 	"github.com/Kalybus/ark-sdk-golang/pkg/common/args"
 	"golang.org/x/crypto/ssh/agent"
 	"log"
@@ -9,7 +10,18 @@ import (
 	"pssh/ssh_agent"
 )
 
-func Start() error {
+type SSHAgentServer struct {
+	logger *common.ArkLogger
+}
+
+func NewSSHAgentServer() *SSHAgentServer {
+	logger := common.GetLogger("SSHAgentClient", common.Unknown)
+	return &SSHAgentServer{
+		logger: logger,
+	}
+}
+
+func (agentServer *SSHAgentServer) Start() error {
 	listener, err := createSocketListener()
 	if err != nil {
 		return fmt.Errorf("Failed to create socket: %v", err)
@@ -22,7 +34,7 @@ func Start() error {
 	}(listener)
 	args.PrintSuccess(fmt.Sprintf("Agent listening on %s", ssh_agent.SocketPath()))
 
-	agentServer := agent.NewKeyring()
+	nativeAgent := agent.NewKeyring()
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -33,20 +45,27 @@ func Start() error {
 			defer func(c net.Conn) {
 				err = c.Close()
 				if err != nil {
-					args.PrintFailure(fmt.Sprintf("Close failed: %v", err))
+					agentServer.logger.Error("Close failed: %v", err)
+					return
 				}
 			}(c)
-			_ = agent.ServeAgent(agentServer, c)
+			_ = agent.ServeAgent(nativeAgent, c)
 		}(conn)
 	}
 }
 
-func IsRunning() bool {
+func (agentServer *SSHAgentServer) IsRunning() bool {
 	addr := ssh_agent.SocketPath()
 	conn, err := net.Dial(getNetworkType(), addr)
 	if err != nil {
+		agentServer.logger.Error("Failed to connect to SSH agent: %s", err)
 		return false
 	}
-	_ = conn.Close()
+	err = conn.Close()
+	if err != nil {
+		agentServer.logger.Error("Failed to close SSH agent connection: %s", err)
+		return false
+	}
+	agentServer.logger.Debug("SSH agent is running on %s", addr)
 	return true
 }

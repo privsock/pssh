@@ -2,10 +2,9 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/Kalybus/ark-sdk-golang/pkg/common"
 	"github.com/Kalybus/ark-sdk-golang/pkg/common/args"
-	"github.com/Kalybus/ark-sdk-golang/pkg/models"
 	"github.com/spf13/cobra"
-	"golang.org/x/crypto/ssh/agent"
 	"pssh/cmd/ark"
 	configCmd "pssh/cmd/config"
 	"pssh/cmd/keys"
@@ -15,20 +14,24 @@ import (
 	"pssh/ssh_agent"
 	sshagentclient "pssh/ssh_agent/client"
 	sshagentserver "pssh/ssh_agent/server"
-	"pssh/utils"
+	"time"
 )
 
 var RootCmd = &cobra.Command{
 	Use:     "pssh user@address",
-	Version: "0.2.1",
+	Version: "0.3.0",
 	Short:   "pssh is an ssh connection client for the CyberArk platform",
 	Run:     rootCmdEntrypoint,
 	Args:    cobra.ExactArgs(1),
 }
 
-// init Initialize the root command configuration. Automatically ran at initialization
+// init Initializes the root command configuration. Automatically ran at initialization
 func init() {
-	RootCmd.Flags().String("profile-name", "", "Profile name to load")
+	RootCmd.PersistentFlags().Bool("verbose", false, "Whether to verbose log")
+	RootCmd.PersistentFlags().String("logger-style", "default", "Which verbose logger style to use")
+	RootCmd.PersistentFlags().String("log-level", "INFO", "Log level to use while verbose")
+
+	RootCmd.Flags().String("profile-name", "", "profile name to load")
 	RootCmd.Flags().String("network", "", "SIA network name")
 	RootCmd.Flags().Bool("no-shared-secrets", false, "Do not share secrets between different authenticators with the same username")
 	RootCmd.Flags().Bool("force", false, "Whether to force login even though token has not expired yet")
@@ -42,51 +45,56 @@ func init() {
 
 // rootCmdEntrypoint Authenticate and performs SSH connection
 func rootCmdEntrypoint(cmd *cobra.Command, execArgs []string) {
+	logger := common.GetLogger("Root", common.Unknown)
 	pssh := core.NewPSSH(cmd, execArgs)
-	if !sshagentserver.IsRunning() {
+	agentServer := sshagentserver.NewSSHAgentServer()
+	agentClient := sshagentclient.NewSSHAgentClient()
+	if !agentServer.IsRunning() {
 		err := sshagentserver.StartInBackground()
 		if err != nil {
 			args.PrintFailure("Fail to start MFA agent")
 			return
 		}
 		args.PrintSuccess(fmt.Sprintf("MFA agent started at %s", ssh_agent.SocketPath()))
+		time.Sleep(100 * time.Millisecond) // Wait for the agent to start
 	}
-
-	foundKeys, err := FoundMfaKey(pssh.Profile)
+	keyName, err := pssh.GetKeyName()
 	if err != nil {
-		// TODO Debug failing to fetch an mfa key
+		logger.Error("Failed getting key name: %v", err)
+		return
+	}
+	foundKeys, err := agentClient.HasKey(keyName)
+	if err != nil {
+		logger.Error("Failed checking for existing keys: %v", err)
+		return
 	}
 	if !foundKeys { // Using a bool here crashes the debugger somehow...
-		err := pssh.Authenticate()
+		err = pssh.Authenticate()
 		if err != nil {
-			args.PrintWarning(fmt.Sprintf("Profile %s failed to authenticate, %s", pssh.Profile.ProfileName, err))
+			args.PrintWarning(fmt.Sprintf("Failed to authenticate: %s", err))
 		}
-
 		// Update keyName after authentication
-		var keyName string
-		keyName, err = utils.GetKeyName(pssh.Profile)
+		keyName, err = pssh.GetKeyName()
 		if err != nil {
 			args.PrintFailure(fmt.Sprintf("Failed getting key name: %s\n", err))
 		}
-
 		// Generate a new key
 		var key string
-		key, err = pssh.GenerateSSHToken()
+		key, err = pssh.GenerateSIAMFAKey()
 		if err != nil {
 			args.PrintFailure(fmt.Sprintf("Failed to generate sia key: %s", err))
 			return
 		}
-
 		// Load key to ssh agent
 		lifetime := config.GetUint32("key_lifetime")
 		if lifetime == 0 {
 			lifetime = 900
 		}
-		err = sshagentclient.AddKey(keyName, key, lifetime)
+		err = agentClient.AddKey(keyName, key, lifetime)
 		if err != nil {
 			args.PrintFailure(fmt.Sprintf("Failed add sia key: %s", err))
 		}
-		//args.PrintSuccess("SIA key added to mfa agent")
+		logger.Info("SIA mfa key added to the agent")
 	}
 
 	err = pssh.ConnectWithSIA()
@@ -94,22 +102,4 @@ func rootCmdEntrypoint(cmd *cobra.Command, execArgs []string) {
 		args.PrintFailure(fmt.Sprintf("Failed to connect: %s", err))
 		return
 	}
-}
-
-func FoundMfaKey(profile *models.ArkProfile) (bool, error) {
-	agentKeys, err := sshagentclient.GetKeys()
-	if err != nil {
-		agentKeys = []*agent.Key{}
-		return false, fmt.Errorf("failed getting agent keys: %s", err)
-	}
-	keyName, err := utils.GetKeyName(profile)
-	if err == nil {
-		// Search for existing keys in agent
-		for _, key := range agentKeys {
-			if key.Comment == keyName {
-				return true, nil
-			}
-		}
-	}
-	return false, nil
 }

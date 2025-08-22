@@ -1,6 +1,6 @@
 //go:build windows
 
-package core
+package ssh_client
 
 import (
 	"os"
@@ -8,7 +8,7 @@ import (
 	"syscall"
 )
 
-func ProgramExec(program string, args []string, environ []string) error {
+func Exec(program string, args []string, environ []string) error {
 	cmd := exec.Command(program, args[1:]...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: 0}
 	cmd.Stdin = os.Stdin

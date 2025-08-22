@@ -16,17 +16,24 @@ var MfaAgentCmd = &cobra.Command{
 	Short: "Start MFA Agent",
 	Long:  `Start MFA Agent`,
 	Args:  cobra.NoArgs,
-	Run: func(cmd *cobra.Command, execArgs []string) {
-		if sshagentserver.IsRunning() {
-			args.PrintFailure("MFA agent is already running")
-			return
-		}
+	Run:   RunMFAAgent,
+}
 
-		ctx, cancel := context.WithCancel(context.Background())
-		go MonitoringLoop(ctx)
-		sshagentserver.Start()
-		defer cancel()
-	},
+func RunMFAAgent(cmd *cobra.Command, execArgs []string) {
+	agentServer := sshagentserver.NewSSHAgentServer()
+	if agentServer.IsRunning() {
+		args.PrintFailure("MFA agent is already running")
+		return
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go MonitoringLoop(ctx)
+	err := agentServer.Start()
+	if err != nil {
+		cancel()
+		return
+	}
+	defer cancel()
 }
 
 func resetTimer(timer *time.Timer, timerMutex *sync.Mutex) *time.Timer {
@@ -70,7 +77,8 @@ func MonitoringLoop(ctx context.Context) {
 }
 
 func isKeyPresent() bool {
-	keys, err := sshagentclient.GetKeys()
+	agentClient := sshagentclient.NewSSHAgentClient()
+	keys, err := agentClient.GetKeys()
 	if err == nil && len(keys) > 0 {
 		return true
 	}

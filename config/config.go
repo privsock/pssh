@@ -49,7 +49,7 @@ func LoadConfig() {
 	}
 }
 
-// Set Set a value in the pssh config
+// Set sets a value in the pssh config
 func Set(key string, value any) {
 	viper.Set(key, value)
 	err := viper.WriteConfig()
@@ -86,7 +86,7 @@ func SetString(key string, prompt string, defaultValue string, required bool) {
 	}
 }
 
-// SetUint32 Set a uint32 value in the pssh config
+// SetUint32 sets an uint32 value in the pssh config
 func SetUint32(key string, prompt string, defaultValue uint32, required bool) {
 	var keyVal uint32
 	var isRequired = true
@@ -112,7 +112,7 @@ func SetUint32(key string, prompt string, defaultValue uint32, required bool) {
 	}
 }
 
-// GetUint32 Get a uint32 value in the pssh config
+// GetUint32 gets an uint32 value in the pssh config
 func GetUint32(key string) uint32 {
 	return viper.GetUint32(key)
 }

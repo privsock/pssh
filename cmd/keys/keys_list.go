@@ -22,7 +22,8 @@ var keysListCmd = &cobra.Command{
 }
 
 func ListKeys() error {
-	keys, err := sshagentclient.GetKeys()
+	agentClient := sshagentclient.NewSSHAgentClient()
+	keys, err := agentClient.GetKeys()
 	if err != nil {
 		return fmt.Errorf("error getting keys: %s", err)
 	}
