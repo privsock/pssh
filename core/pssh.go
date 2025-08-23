@@ -71,7 +71,7 @@ func (pssh *PSSH) GetNoSharedSecretsParam() bool {
  * Helper functions
  ********************/
 
-// GetAuthenticators returns a list of authenticators for the profile
+// GetAuthenticators returns a list of non-expired authenticators for the profile
 func (pssh *PSSH) GetAuthenticators(refreshAuth bool) map[authmodels.ArkAuthProfile]auth.ArkAuth {
 	// Use cache if it exists
 	if pssh.cache.authenticators != nil {
@@ -87,7 +87,7 @@ func (pssh *PSSH) GetAuthenticators(refreshAuth bool) map[authmodels.ArkAuthProf
 		if time.Now().After(time.Time(token.ExpiresIn)) {
 			continue
 		}
-		pssh.logger.Debug("Found authenticator: %s", authenticator.AuthenticatorHumanReadableName())
+		pssh.logger.Debug("Found authenticator with valid token [%s]", authenticator.AuthenticatorHumanReadableName())
 		authenticators[*authProfile] = authenticator
 	}
 	pssh.cache.authenticators = authenticators
@@ -139,7 +139,7 @@ func (pssh *PSSH) GetUsername() (string, error) {
 	for authProfile, authenticator := range pssh.GetAuthenticators(true) {
 		username = authProfile.Username
 		if username != "" {
-			pssh.logger.Debug("Found username [%s] of authenticator [%s]", username, authenticator.AuthenticatorHumanReadableName())
+			pssh.logger.Debug("Found username [%s] in authenticator [%s]", username, authenticator.AuthenticatorHumanReadableName())
 			pssh.cache.username = username
 			return username, nil
 		}
@@ -161,7 +161,7 @@ func (pssh *PSSH) GetKeyName() (string, error) {
 		return "", fmt.Errorf("failed to get domain: %s", err)
 	}
 	keyName := fmt.Sprintf("%s@%s", domain, username)
-	pssh.logger.Debug("Using mfa key name [%s]", keyName)
+	pssh.logger.Info("Using MFA ssh key [%s]", keyName)
 	return keyName, nil
 }
 

@@ -19,12 +19,14 @@ func GetProfileName() string {
 	return profile
 }
 
-// GetProfile Returns the stored profile from the name (e.g. ark)
+// GetProfile Returns the stored profile from the name (e.g., ark)
 func GetProfile(profileName string) *models.ArkProfile {
 	profileLoader := profiles.DefaultProfilesLoader()
 	profile, err := (*profileLoader).LoadProfile(profiles.DeduceProfileName(profileName))
 	if err != nil || profile == nil {
-		args.PrintFailure("Please configure a profile before trying to login")
+		args.PrintFailure("Please configure a profile before to login: \n" +
+			"- run `pssh ark configure` to create a new ark profile.\n" +
+			"- run `pssh configure` to set the default profile or use `--profile-name <profile>` in the command\n")
 		os.Exit(1)
 	}
 	return profile
@@ -36,10 +38,8 @@ func ParseTokenDateString(dateStr string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("error parsing time: %s", err)
 	}
-
 	localTime := parsedTime.Local()
 	formatted := localTime.Format("2006-01-02 15:04:05")
-
 	return formatted, nil
 }
 

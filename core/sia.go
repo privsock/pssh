@@ -58,35 +58,53 @@ func (pssh *PSSH) ConnectWithSIA() error {
 	cmdArgs := []string{"-o", "IdentityFile=none"}
 	username, err := pssh.GetUsername()
 	if err != nil {
+		pssh.logger.Error("Missing username")
 		return err
 	}
 	subdomain, err := pssh.GetSubdomain()
 	if err != nil {
+		pssh.logger.Error("Missing subdomain")
 		return err
 	}
 	if len(pssh.Args) == 0 {
+		pssh.logger.Error("Missing [user@]hostname")
 		return errors.New("missing [user@]hostname")
 	}
 	content := pssh.Args[0]
 	host := fmt.Sprintf("%s.ssh.cyberark.cloud", subdomain)
-	network, err := pssh.cmd.Flags().GetString("network")
+	network, err := pssh.GetSIANetworkParam()
 	if err != nil {
-		return errors.New("missing network")
+		pssh.logger.Error("Unable to fetch SIA network: %v", err)
+		return err
 	}
-	if network == "" {
-		network = config.GetString("sia_network")
-	}
+	// Adding the network delimiter if network is defined
 	if network != "" {
 		network = fmt.Sprintf("#%s", network)
 	}
-
 	// ZSP: <username>@<login_suffix>#<subdomain>@<target>[:target_port]#<NetworkName>@<SSH gateway> <inline_commands>
 	// VTL: <username>@<login_suffix>#<subdomain>@<target_user>#account_domain@<target>[:target_port]#<NetworkName>@<SSH gateway> <inline_commands>
 	connString := fmt.Sprintf("%s#%s@%s%s@%s", username, subdomain, content, network, host)
 	cmdArgs = append(cmdArgs, connString)
+	pssh.logger.Info("Connection string: %s", connString)
 	err = ssh_client.SSH(cmdArgs)
 	if err != nil {
 		return err
 	}
 	return nil
+}
+
+func (pssh *PSSH) GetSIANetworkParam() (string, error) {
+	network, err := pssh.cmd.Flags().GetString("network")
+	if err != nil {
+		pssh.logger.Error("Failed to get network parameter")
+		return "", errors.New("failed to get network parameter")
+	}
+	if network == "" {
+		network = config.GetString("sia_network")
+	}
+	if network == "" {
+		pssh.logger.Debug("No SIA network found")
+		return "", nil
+	}
+	return network, nil
 }

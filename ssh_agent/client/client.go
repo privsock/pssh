@@ -39,7 +39,7 @@ func (agentClient *SSHAgentClient) GetKeys() ([]*agent.Key, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not list SSH keys: %w", err)
 	}
-	agentClient.logger.Debug("Retrieved %d keys from agent", len(keys))
+	agentClient.logger.Debug("Retrieved %d key(s) in agent", len(keys))
 	return keys, nil
 }
 
