@@ -52,7 +52,7 @@ func (pssh *PSSH) GenerateSIAMFAKey() (string, error) {
 	return string(key), nil
 }
 
-// ConnectWithSIA establishes a secure SSH connection using SIA credentials and configuration parameters.
+// ConnectWithSIA establishes a secure SSH connection using sia configuration parameters.
 // Returns an error if authentication fails or if required parameters are missing.
 func (pssh *PSSH) ConnectWithSIA() error {
 	cmdArgs := []string{"-o", "IdentityFile=none"}

@@ -19,7 +19,7 @@ import (
 
 var RootCmd = &cobra.Command{
 	Use:     "pssh user@address",
-	Version: "0.3.1",
+	Version: "0.4.0",
 	Short:   "pssh is an ssh connection client for the CyberArk platform",
 	Run:     rootCmdEntrypoint,
 	Args:    cobra.ExactArgs(1),
@@ -78,28 +78,76 @@ func rootCmdEntrypoint(cmd *cobra.Command, execArgs []string) {
 		if err != nil {
 			args.PrintFailure(fmt.Sprintf("Failed getting key name: %s\n", err))
 		}
-		// Generate a new key
-		var key string
-		key, err = pssh.GenerateSIAMFAKey()
+		err = GenerateSSHKey(pssh, keyName, logger, agentClient)
 		if err != nil {
-			args.PrintFailure(fmt.Sprintf("Failed to generate sia key: %s", err))
+			args.PrintFailure(fmt.Sprintf("Failed to generate ssh key: %s", err))
 			return
 		}
-		// Load key to ssh agent
-		lifetime := config.GetUint32("key_lifetime")
-		if lifetime == 0 {
-			lifetime = 900
-		}
-		err = agentClient.AddKey(keyName, key, lifetime)
-		if err != nil {
-			args.PrintFailure(fmt.Sprintf("Failed add sia key: %s", err))
-		}
-		logger.Info("SIA mfa key added to the agent")
 	}
 
-	err = pssh.ConnectWithSIA()
+	err = Connect(pssh)
 	if err != nil {
 		args.PrintFailure(fmt.Sprintf("Failed to connect: %s", err))
 		return
 	}
+}
+
+func Connect(pssh *core.PSSH) (err error) {
+	sshService := pssh.GetSSHService()
+	if sshService == "sia" {
+		return pssh.ConnectWithSIA()
+	}
+	if sshService == "psmp" {
+		return pssh.ConnectWithPSMP()
+	}
+	return fmt.Errorf("ssh service %s is not supported", sshService)
+}
+
+func GenerateSSHKey(pssh *core.PSSH, keyName string, logger *common.ArkLogger, agentClient *sshagentclient.SSHAgentClient) (err error) {
+	sshService := pssh.GetSSHService()
+	if sshService == "sia" {
+		return GenerateSIASSHKey(pssh, keyName, logger, agentClient)
+	}
+	if sshService == "psmp" {
+		return GeneratePSMPSSHKey(pssh, keyName, logger, agentClient)
+	}
+	return fmt.Errorf("ssh service %s is not supported", sshService)
+}
+
+func GenerateSIASSHKey(pssh *core.PSSH, keyName string, logger *common.ArkLogger, agentClient *sshagentclient.SSHAgentClient) (err error) {
+	// Generate a new key
+	var key string
+	key, err = pssh.GenerateSIAMFAKey()
+	if err != nil {
+		args.PrintFailure(fmt.Sprintf("Failed to generate sia key: %s", err))
+		return err
+	}
+	// Load key to ssh agent
+	lifetime := config.GetUint32("key_lifetime")
+	if lifetime == 0 {
+		lifetime = 900
+	}
+	err = agentClient.AddKey(keyName, key, lifetime)
+	if err != nil {
+		args.PrintFailure(fmt.Sprintf("Failed add sia key: %s", err))
+	}
+	logger.Info("SIA mfa key added to the agent")
+	return nil
+}
+
+func GeneratePSMPSSHKey(pssh *core.PSSH, keyName string, logger *common.ArkLogger, agentClient *sshagentclient.SSHAgentClient) (err error) {
+	// Generate a new key
+	var key string
+	key = pssh.GeneratePSMPMFAKey()
+	// Load key to ssh agent
+	lifetime := config.GetUint32("key_lifetime")
+	if lifetime == 0 {
+		lifetime = 900
+	}
+	err = agentClient.AddKey(keyName, key, lifetime)
+	if err != nil {
+		args.PrintFailure(fmt.Sprintf("Failed add psmp key: %s", err))
+	}
+	logger.Info("SIA mfa key added to the agent")
+	return nil
 }

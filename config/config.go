@@ -61,8 +61,8 @@ func GetString(key string) string {
 	return viper.GetString(key)
 }
 
-// SetString Set a string value in the pssh config
-func SetString(key string, prompt string, defaultValue string, required bool) {
+// AskString Set a string value in the pssh config
+func AskString(key string, prompt string, defaultValue string, required bool) {
 	var keyVal string
 	var isRequired = true
 	for keyVal == "" && isRequired {
@@ -86,8 +86,13 @@ func SetString(key string, prompt string, defaultValue string, required bool) {
 	}
 }
 
-// SetUint32 sets an uint32 value in the pssh config
-func SetUint32(key string, prompt string, defaultValue uint32, required bool) {
+// GetUint32 gets an uint32 value in the pssh config
+func GetUint32(key string) uint32 {
+	return viper.GetUint32(key)
+}
+
+// AskUint32 sets an uint32 value in the pssh config
+func AskUint32(key string, prompt string, defaultValue uint32, required bool) {
 	var keyVal uint32
 	var isRequired = true
 	for keyVal == 0 && isRequired {
@@ -110,9 +115,4 @@ func SetUint32(key string, prompt string, defaultValue uint32, required bool) {
 			args.PrintFailure(fmt.Sprintf("Please enter a valid value for the %s", key))
 		}
 	}
-}
-
-// GetUint32 gets an uint32 value in the pssh config
-func GetUint32(key string) uint32 {
-	return viper.GetUint32(key)
 }

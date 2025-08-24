@@ -160,7 +160,8 @@ func (pssh *PSSH) GetKeyName() (string, error) {
 		pssh.logger.Error("Failed to get domain: %s", err)
 		return "", fmt.Errorf("failed to get domain: %s", err)
 	}
-	keyName := fmt.Sprintf("%s@%s", domain, username)
+	sshService := pssh.GetSSHService()
+	keyName := fmt.Sprintf("%s_%s@%s", sshService, domain, username)
 	pssh.logger.Info("Using MFA ssh key [%s]", keyName)
 	return keyName, nil
 }
@@ -221,4 +222,12 @@ func (pssh *PSSH) AskSecret(authenticatorName string, sharedSecretsMap map[authm
 	}
 
 	return secretStr
+}
+
+func (pssh *PSSH) GetSSHService() string {
+	sshService := config.GetString("ssh_service")
+	if sshService == "" {
+		sshService = "sia"
+	}
+	return sshService
 }
