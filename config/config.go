@@ -71,11 +71,11 @@ func AskString(key string, prompt string, defaultValue string, required bool) {
 			keyVal = defaultValue
 		}
 		isRequired = required
-		prompt := &survey.Input{
+		question := &survey.Input{
 			Message: prompt,
 			Default: keyVal,
 		}
-		err := survey.AskOne(prompt, &keyVal)
+		err := survey.AskOne(question, &keyVal)
 		cobra.CheckErr(err)
 
 		if keyVal != "" {
@@ -84,6 +84,21 @@ func AskString(key string, prompt string, defaultValue string, required bool) {
 			args.PrintFailure(fmt.Sprintf("Please enter a valid value for the %s", key))
 		}
 	}
+}
+
+func AskStringChoice(key string, prompt string, choices []string, defaultValue string) {
+	keyVal := viper.GetString(key)
+	if keyVal == "" {
+		keyVal = defaultValue
+	}
+	question := &survey.Select{
+		Message: prompt,
+		Options: choices,
+		Default: keyVal,
+	}
+	err := survey.AskOne(question, &keyVal)
+	cobra.CheckErr(err)
+	Set(key, keyVal)
 }
 
 // GetUint32 gets an uint32 value in the pssh config
@@ -101,11 +116,11 @@ func AskUint32(key string, prompt string, defaultValue uint32, required bool) {
 			keyVal = defaultValue
 		}
 		isRequired = required
-		prompt := &survey.Input{
+		question := &survey.Input{
 			Message: prompt,
 			Default: strconv.FormatUint(uint64(keyVal), 10),
 		}
-		err := survey.AskOne(prompt, &keyVal)
+		err := survey.AskOne(question, &keyVal)
 		cobra.CheckErr(err)
 
 		if keyVal != 0 {

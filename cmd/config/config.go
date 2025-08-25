@@ -2,8 +2,8 @@ package config
 
 import (
 	"fmt"
-	"github.com/Iilun/survey/v2"
 	"github.com/Kalybus/ark-sdk-golang/pkg/common/args"
+	"github.com/Kalybus/ark-sdk-golang/pkg/profiles"
 	"github.com/spf13/cobra"
 	psshConfig "pssh/config"
 )
@@ -13,19 +13,23 @@ var ConfigCmd = &cobra.Command{
 	Short: "Configure pssh",
 	Long:  "Configure pssh",
 	Run: func(cmd *cobra.Command, execArgs []string) {
-		psshConfig.AskString("ark_profile", "Enter Ark profile name", "", false)
-		sshServicePrompt := &survey.Select{
-			Message: "Select SSH service",
-			Options: []string{"sia", "psmp"},
-			Default: "sia",
-		}
-		var sshService string
-		err := survey.AskOne(sshServicePrompt, &sshService)
+		profilesLoader := profiles.DefaultProfilesLoader()
+		loadedProfiles, err := (*profilesLoader).LoadAllProfiles()
 		if err != nil {
-			args.PrintFailure(fmt.Sprintf("Fail to configure pssh: %s", err))
+			args.PrintFailure(fmt.Sprintf("Failed to load profiles: %v", err))
 			return
 		}
-		psshConfig.Set("ssh_service", sshService)
+		if len(loadedProfiles) == 0 {
+			args.PrintFailure("No profiles were found. Please run `pssh ark configure`")
+			return
+		}
+		profilesNames := []string{}
+		for _, profile := range loadedProfiles {
+			profilesNames = append(profilesNames, profile.ProfileName)
+		}
+		psshConfig.AskStringChoice("ark_profile", "Choose the Ark profile to use", profilesNames, "")
+		psshConfig.AskStringChoice("ssh_service", "Select the SSH service to use", []string{"sia", "psmp"}, "sia")
+		sshService := psshConfig.GetString("ssh_service")
 		if sshService == "sia" {
 			psshConfig.AskString("sia_network", "Enter SIA preferred network (e.g default)", "default_network", false)
 			psshConfig.AskUint32("key_lifetime", "Enter the sia mfa key lifetime in seconds (e.g 900)", 900, false)
